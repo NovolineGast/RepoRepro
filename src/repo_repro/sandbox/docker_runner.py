@@ -272,7 +272,13 @@ class DockerSandboxRunner:
     def _json(self, arguments: Sequence[str]) -> object:
         result = self.transport.run(arguments)
         if result.returncode or result.timed_out or result.output_limited:
-            raise SandboxError(f"Docker {arguments[0]} failed", stage="sandbox")
+            message = f"Docker {arguments[0]} failed"
+            if arguments[0] == "info":
+                message += (
+                    ". Check `docker version` and `docker context show`, then confirm "
+                    "the intended Linux Docker daemon is running."
+                )
+            raise SandboxError(message, stage="sandbox")
         try:
             value: object = json.loads(result.stdout)
             return value
