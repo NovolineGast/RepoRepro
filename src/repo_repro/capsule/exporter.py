@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
+from repo_repro.adapters.contracts import AdapterSelection
+from repo_repro.capsule.adapter_binding import v1_adapters
 from repo_repro.capsule.archive import validate_capsule
 from repo_repro.capsule.images import DockerImageArchive
 from repo_repro.capsule.schema import (
@@ -25,7 +27,6 @@ from repo_repro.capsule.schema import (
 )
 from repo_repro.capsule.security import SecretRedactor, pack_source, source_files
 from repo_repro.reproduction.models import DifferentialResult, ReproductionResult
-from repo_repro.reproduction.safety import check_test_code
 from repo_repro.storage.artifacts import FileArtifactStore
 
 
@@ -44,10 +45,12 @@ class CapsuleExporter:
         *,
         redactor: SecretRedactor | None = None,
         images: DockerImageArchive | None = None,
+        adapters: AdapterSelection | None = None,
     ) -> None:
         self.artifacts = artifacts
         self.redactor = redactor or SecretRedactor()
         self.images = images or DockerImageArchive()
+        self.adapters = v1_adapters(adapters)
 
     def export(
         self,
@@ -136,9 +139,10 @@ class CapsuleExporter:
                         if captured_helpers is not None and captured_helpers != helpers:
                             raise CapsuleError("captured test/runtime helper versions differ")
                         captured_helpers = helpers
-                        runtime = str(
-                            backend.get("cgroup_probe", {}).get("python_version", "unknown")
-                        )
+                        probe = backend.get("cgroup_probe", {})
+                        if not isinstance(probe, dict):
+                            raise CapsuleError("captured runtime inventory is invalid")
+                        runtime = self.adapters.language.runtime_version(probe)
                 if not diagnostic_only:
                     captured = source_files(
                         self.artifacts.read_bytes(group.executions[0].revision.source)
@@ -152,7 +156,7 @@ class CapsuleExporter:
                                 "source snapshot contradicts the captured helper hashes"
                             )
                     if (
-                        captured.get("repo_repro_generated/test_repro.py")
+                        captured.get(self.adapters.framework.bundle(generated.code).test_path)
                         != generated.code.encode()
                     ):
                         raise CapsuleError("captured test differs from the sealed test")
@@ -168,7 +172,7 @@ class CapsuleExporter:
                     sources.append(CapsuleSource(side=side, commit=group.commit, path=source_name))
             environment = original.environment
             if not diagnostic_only:
-                check_test_code(generated.code)
+                self.adapters.framework.validate_code(generated.code)
                 if hashlib.sha256(generated.code.encode()).hexdigest() != generated.sha256:
                     raise CapsuleError("sealed test hash mismatch")
                 if len(actual_images) != 1 or captured_helpers is None:

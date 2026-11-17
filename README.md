@@ -187,6 +187,8 @@ CLI
 
 Shared contracts live in `core/`. The AI provider and sandbox use injectable interfaces. Generic report generation and dependency-environment preparation remain unfinished; Capsule replay has its own JSON/Markdown reports.
 
+The development branch also exposes trusted `LanguageAdapter` and `TestFrameworkAdapter` registrations through `adapters/`. Run `repro adapters` to inspect the built-ins. Current execution support remains Python/pytest; the [adapter guide](docs/adapters.md) describes dispatch, compatibility boundaries, and the work required for another language.
+
 ## Roadmap
 
 - [ ] Prepare and freeze project dependency environments.

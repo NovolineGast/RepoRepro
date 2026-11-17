@@ -9,7 +9,8 @@ import typer
 from rich.console import Console
 
 from repo_repro import __version__
-from repo_repro.analyzer.python_analyzer import PythonAnalyzer
+from repo_repro.adapters.registry import builtin_registry
+from repo_repro.analyzer.service import RepositoryAnalysis
 from repo_repro.capsule.cli import app as capsule_app
 from repo_repro.config import AppConfig
 from repo_repro.core.context import IssueContext
@@ -80,7 +81,7 @@ def analyze(
     try:
         parser = IssueParser(GitHubClient(token=os.environ.get("GITHUB_TOKEN")))
         context = parser.parse(url, issue_json=issue_json)
-        analyzer = PythonAnalyzer()
+        analyzer = RepositoryAnalysis()
         if repository_path is None:
             information = analyzer.clone_and_analyze(
                 context.repository_url,
@@ -97,3 +98,11 @@ def analyze(
     except (RepoReproError, OSError) as error:
         console.print(str(error), style="red", markup=False)
         raise typer.Exit(2 if isinstance(error, InputError) else 3) from None
+
+
+@app.command("adapters")
+def adapters() -> None:
+    """List explicitly registered built-in language and test-framework adapters."""
+    import json
+
+    typer.echo(json.dumps(builtin_registry().describe(), indent=2))

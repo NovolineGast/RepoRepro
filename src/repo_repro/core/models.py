@@ -154,6 +154,11 @@ class ExecutionResult(Record):
     resource_usage: ResourceUsage | None = None
 
     @property
+    def test_report(self) -> ArtifactRef | None:
+        """Framework-neutral access to the v1 wire field named pytest_report."""
+        return self.pytest_report
+
+    @property
     def timed_out(self) -> bool:
         return self.termination is Termination.TIMEOUT
 

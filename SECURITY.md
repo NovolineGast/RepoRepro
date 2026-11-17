@@ -28,4 +28,6 @@ Original artifact stores preserve raw evidence and may contain secrets. Model-as
 
 The development-branch investigator additionally sends a filtered file catalog, seed context, and redacted original-version execution feedback to the selected provider. Planning hypotheses are not static facts. Planning corrections and candidate revisions are budgeted; model output cannot widen runtime policy or change the sealed oracle. Fixed-version execution is evaluated separately and is not fed back into test generation.
 
+Language/framework adapters are trusted host-side code registered explicitly by the application. They are not loaded from model output, repositories, or Capsules. Review adapter code before registering it. Core sandbox enforcement and cleanup remain mandatory; adapter runtime inventory cannot overwrite kernel enforcement evidence.
+
 Git clone transfer does not have a cross-platform hard disk quota. Archive and output budgets limit later processing but do not replace acquisition quotas or stronger host isolation.

@@ -9,6 +9,8 @@ from uuid import UUID, uuid4
 
 from pydantic import AwareDatetime
 
+from repo_repro.adapters.contracts import AdapterSelection
+from repo_repro.capsule.adapter_binding import v1_adapters
 from repo_repro.capsule.archive import extract_capsule, validate_capsule
 from repo_repro.capsule.images import DockerImageArchive, scan_image
 from repo_repro.capsule.schema import CapsuleError, json_object
@@ -23,8 +25,6 @@ from repo_repro.reproduction.models import (
     ReproductionStatus,
     TestProposal,
 )
-from repo_repro.reproduction.runtime import injected_files
-from repo_repro.reproduction.safety import check_test_code
 from repo_repro.sandbox.docker_runner import DockerSandboxRunner
 from repo_repro.storage.artifacts import FileArtifactStore
 from repo_repro.verification.differential import compare
@@ -76,8 +76,11 @@ def compare_replay(
 
 
 class CapsuleReplay:
-    def __init__(self, *, images: DockerImageArchive | None = None) -> None:
+    def __init__(
+        self, *, images: DockerImageArchive | None = None, adapters: AdapterSelection | None = None
+    ) -> None:
         self.images = images or DockerImageArchive()
+        self.adapters = v1_adapters(adapters)
 
     def replay(
         self,
@@ -141,11 +144,11 @@ class CapsuleReplay:
         if hashlib.sha256(code_bytes).hexdigest() != manifest.replay.test_sha256:
             raise CapsuleError("test payload differs from the sealed recipe")
         code = code_bytes.decode("utf-8")
-        check_test_code(code)
+        self.adapters.framework.validate_code(code)
         helpers = tuple(
             sorted(
                 (name, hashlib.sha256(content).hexdigest())
-                for name, content in injected_files(code).items()
+                for name, content in self.adapters.framework.bundle(code).files.items()
             )
         )
         if helpers != manifest.replay.helper_hashes:
@@ -194,8 +197,12 @@ class CapsuleReplay:
             input_record=provenance,
         )
         environment = environment.model_copy(update={"policy": local_policy})
-        backend = DockerSandboxRunner(image=manifest.image.image_id, artifacts=store)
-        executor = ReproductionExecutor(backend, store, snapshot_backend=backend)
+        backend = DockerSandboxRunner(
+            image=manifest.image.image_id, artifacts=store, adapters=self.adapters
+        )
+        executor = ReproductionExecutor(
+            backend, store, snapshot_backend=backend, adapters=self.adapters
+        )
         outcomes: list[ReproductionResult] = []
         for source in manifest.sources:
             snapshot = store.put_bytes(snapshots[source.side], media_type="application/x-tar")

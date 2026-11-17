@@ -6,11 +6,12 @@ import re
 
 from pydantic import ValidationError
 
+from repo_repro.adapters.contracts import TestFrameworkAdapter
+from repo_repro.adapters.registry import default_selection
 from repo_repro.core.models import ExecutionResult, Termination
 from repo_repro.reproduction.models import (
     AttemptAssessment,
     FailureOracle,
-    PytestEvidence,
     ReproductionStatus,
 )
 
@@ -19,7 +20,12 @@ def assess_execution(
     result: ExecutionResult,
     oracle: FailureOracle,
     report: bytes | None,
+    *,
+    framework: TestFrameworkAdapter | None = None,
 ) -> AttemptAssessment:
+    selected = framework or default_selection().framework
+    name = selected.display_name
+
     def verdict(
         status: ReproductionStatus, reason: str, signature: str | None = None
     ) -> AttemptAssessment:
@@ -41,13 +47,18 @@ def assess_execution(
         )
     if result.exit_code not in {0, 1}:
         return verdict(
-            ReproductionStatus.ENVIRONMENT_ERROR, "pytest did not complete an ordinary test session"
+            ReproductionStatus.ENVIRONMENT_ERROR,
+            f"{name} did not complete an ordinary test session",
         )
     try:
-        evidence = PytestEvidence.model_validate_json(report or b"")
+        evidence = selected.normalize_evidence(report or b"")
     except (ValidationError, ValueError, RecursionError):
         return verdict(
-            ReproductionStatus.INCONCLUSIVE, "missing or malformed structured pytest evidence"
+            ReproductionStatus.INCONCLUSIVE, f"missing or malformed structured {name} evidence"
+        )
+    if evidence.framework_id != selected.id:
+        return verdict(
+            ReproductionStatus.INCONCLUSIVE, "test evidence belongs to another framework"
         )
     if (
         not evidence.collection_complete
@@ -56,10 +67,10 @@ def assess_execution(
     ):
         return verdict(
             ReproductionStatus.INCONCLUSIVE,
-            "pytest session/exit evidence is incomplete or contradictory",
+            f"{name} session/exit evidence is incomplete or contradictory",
         )
     if evidence.collection_errors:
-        return verdict(ReproductionStatus.ENVIRONMENT_ERROR, "pytest collection failed")
+        return verdict(ReproductionStatus.ENVIRONMENT_ERROR, f"{name} collection failed")
     if evidence.collected != (oracle.node_id,):
         return verdict(
             ReproductionStatus.INCONCLUSIVE, "the selected target was not collected exactly once"
@@ -68,9 +79,9 @@ def assess_execution(
     if any(phase.truncated for phase in phases):
         return verdict(ReproductionStatus.INCONCLUSIVE, "failure evidence was truncated")
     if len(phases) != 3 or {phase.phase for phase in phases} != {"setup", "call", "teardown"}:
-        return verdict(ReproductionStatus.INCONCLUSIVE, "missing or duplicate pytest phases")
+        return verdict(ReproductionStatus.INCONCLUSIVE, f"missing or duplicate {name} phases")
     if any(
-        phase.node_id != oracle.node_id or phase.was_xfail or phase.outcome == "skipped"
+        phase.target_id != oracle.node_id or phase.expected_failure or phase.outcome == "skipped"
         for phase in phases
     ):
         return verdict(ReproductionStatus.INCONCLUSIVE, "skipped, xfail or wrong target")

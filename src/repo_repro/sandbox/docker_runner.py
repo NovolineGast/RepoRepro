@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Literal, Protocol
 from uuid import uuid4
 
+from repo_repro.adapters.contracts import AdapterSelection, LanguageAdapter, TestBundle
+from repo_repro.adapters.registry import AdapterRegistry, default_selection
 from repo_repro.core.exceptions import ExecutionBackendError, PolicyViolation, SandboxError
 from repo_repro.core.models import (
     CommandSpec,
@@ -26,8 +28,6 @@ from repo_repro.core.models import (
 )
 from repo_repro.core.source_archives import pack_source, source_files
 from repo_repro.reproduction.models import PytestRunRequest, PytestSnapshotRequest
-from repo_repro.reproduction.runtime import injected_files
-from repo_repro.reproduction.safety import check_test_code
 from repo_repro.sandbox.metrics import stats_sample
 from repo_repro.sandbox.process import ProcessOutput, capture_process
 from repo_repro.sandbox.snapshot import SourceSnapshot, snapshot_repository
@@ -75,7 +75,7 @@ except OSError as error:
     exit_code = 127
 if request.get('report_marker'):
     try:
-        with open('/tmp/repo-repro-pytest.json', 'rb') as stream:
+        with open(request['report_path'], 'rb') as stream:
             report = stream.read(262145)
         if len(report) <= 262144:
             print('\n' + request['report_marker'] + base64.b64encode(report).decode(), flush=True)
@@ -85,11 +85,10 @@ sys.exit(exit_code)
 """
 
 _PROBE = r"""
-import importlib.metadata, json, os, pathlib, sys, sysconfig
+import json, os, pathlib
 root = pathlib.Path('/sys/fs/cgroup')
 lines = pathlib.Path('/proc/self/status').read_text().splitlines()
 status = dict(line.split(':', 1) for line in lines)
-package_paths = list({sysconfig.get_path('purelib'), sysconfig.get_path('platlib')})
 print(json.dumps({
     'memory': (root/'memory.max').read_text().strip(),
     'swap': (root/'memory.swap.max').read_text().strip(),
@@ -99,11 +98,7 @@ print(json.dumps({
     'no_new_privileges': status.get('NoNewPrivs', '').strip(),
     'seccomp': status.get('Seccomp', '').strip(),
     'workspace_bytes': os.statvfs('/workspace').f_blocks * os.statvfs('/workspace').f_frsize,
-    'python_version': sys.version,
     'platform': list(os.uname()),
-    'packages': sorted((dist.metadata.get('Name', ''), dist.version)
-                       for dist in importlib.metadata.distributions(
-                           path=package_paths)),
 }))
 """
 
@@ -188,12 +183,19 @@ class DockerSandboxRunner:
         image: str,
         artifacts: FileArtifactStore,
         transport: DockerTransport | None = None,
+        adapters: AdapterSelection | None = None,
+        registry: AdapterRegistry | None = None,
     ) -> None:
         if not re.fullmatch(r"(?:[A-Za-z0-9./:_-]+@)?sha256:[0-9a-f]{64}", image):
             raise PolicyViolation("select an already-present, reviewed image by digest or image ID")
         self.image = image
         self.artifacts = artifacts
         self.transport = transport or DockerCLI()
+        self.adapters = adapters or (registry.resolve() if registry else default_selection())
+        self.registry = registry or AdapterRegistry()
+        if registry is None:
+            self.registry.register_language(self.adapters.language)
+            self.registry.register_framework(self.adapters.framework)
 
     def run(
         self,
@@ -217,14 +219,28 @@ class DockerSandboxRunner:
         return self._run(repository_path, command, resource_limits, timeout, "install")
 
     def run_test(self, request: PytestRunRequest) -> ExecutionResult:
-        check_test_code(request.test_code)
+        """Compatibility entry point using the selected framework adapter."""
+        return self.run_bundle(request, self.adapters.framework.bundle(request.test_code))
+
+    def _validate_bundle(self, code: str, bundle: TestBundle) -> AdapterSelection:
+        selected = self.registry.resolve(bundle.language_id, bundle.framework_id)
+        selected.framework.validate_code(code)
+        if bundle != selected.framework.bundle(code):
+            raise PolicyViolation("execution bundle differs from the registered framework")
+        if bundle.files[bundle.test_path] != code.encode():
+            raise PolicyViolation("injected test differs from the sealed candidate")
+        return selected
+
+    def run_bundle(self, request: PytestRunRequest, bundle: TestBundle) -> ExecutionResult:
+        self._validate_bundle(request.test_code, bundle)
         return self._run(
             request.repository_path,
-            CommandSpec(argv=("python", "-I", "/workspace/repo_repro_generated/launch.py")),
+            bundle.command,
             request.policy,
             None,
             "test",
             test_request=request,
+            test_bundle=bundle,
         )
 
     def read_output(self, result: ExecutionResult) -> tuple[str, str]:
@@ -234,11 +250,17 @@ class DockerSandboxRunner:
         )
 
     def run_snapshot(self, request: PytestSnapshotRequest) -> ExecutionResult:
-        check_test_code(request.test_code)
+        """Compatibility entry point using the selected framework adapter."""
+        return self.run_snapshot_bundle(request, self.adapters.framework.bundle(request.test_code))
+
+    def run_snapshot_bundle(
+        self, request: PytestSnapshotRequest, bundle: TestBundle
+    ) -> ExecutionResult:
+        self._validate_bundle(request.test_code, bundle)
         content = source_files(self.artifacts.read_bytes(request.source))
         if any(path.startswith("repo_repro_generated/") for path in content):
             raise PolicyViolation("snapshot must not supply tool scripts")
-        overlay = injected_files(request.test_code)
+        overlay = dict(bundle.files)
         if len(content) + len(overlay) > 5000:
             raise PolicyViolation("source snapshot has too many files")
         content.update(overlay)
@@ -261,12 +283,13 @@ class DockerSandboxRunner:
         )
         return self._run(
             Path("."),
-            CommandSpec(argv=("python", "-I", "/workspace/repo_repro_generated/launch.py")),
+            bundle.command,
             request.policy,
             None,
             "test",
             test_request=original_request,
             prepared_source=prepared,
+            test_bundle=bundle,
         )
 
     def _json(self, arguments: Sequence[str]) -> object:
@@ -329,6 +352,7 @@ class DockerSandboxRunner:
         command: CommandSpec,
         policy: SandboxPolicy,
         report_marker: str | None = None,
+        report_path: str | None = None,
     ) -> list[str]:
         request = json.dumps(
             {
@@ -336,6 +360,7 @@ class DockerSandboxRunner:
                 "cwd": command.cwd,
                 "env": dict(command.env),
                 "report_marker": report_marker,
+                "report_path": report_path,
             }
         )
         return [
@@ -444,7 +469,9 @@ class DockerSandboxRunner:
         ):
             raise PolicyViolation("unexpected container mount")
 
-    def _probe(self, name: str, policy: SandboxPolicy) -> dict[str, object]:
+    def _probe(
+        self, name: str, policy: SandboxPolicy, language: LanguageAdapter | None = None
+    ) -> dict[str, object]:
         # Wait for the trusted supervisor to start before supplying any target bytes.
         deadline = time.monotonic() + 10
         while not _mapping(self._inspect(name).get("State")).get("Running"):
@@ -464,16 +491,6 @@ class DockerSandboxRunner:
                 ]
             )
         )
-        packages = value.get("packages")
-        if not isinstance(value.get("python_version"), str) or not isinstance(packages, list):
-            raise SandboxError("runtime inventory is incomplete", stage="preflight")
-        if len(packages) > 2000 or any(
-            not isinstance(item, list)
-            or len(item) != 2
-            or not all(isinstance(part, str) for part in item)
-            for item in packages
-        ):
-            raise SandboxError("runtime package inventory is invalid", stage="preflight")
         try:
             quota, period = str(value["cpu"]).split()
             effective_cpu = int(quota) / int(period)
@@ -494,6 +511,29 @@ class DockerSandboxRunner:
             ) from error
         if not verified:
             raise PolicyViolation("cgroup limits or process security state do not match policy")
+        selected = language or self.adapters.language
+        inventory = selected.validate_inventory(
+            _mapping(
+                self._json(
+                    ["exec", name, *selected.inventory_command()],
+                )
+            )
+        )
+        reserved = {
+            "memory",
+            "swap",
+            "pids",
+            "cpu",
+            "uid",
+            "capabilities",
+            "no_new_privileges",
+            "seccomp",
+            "workspace_bytes",
+            "platform",
+        }
+        if reserved.intersection(inventory):
+            raise PolicyViolation("runtime inventory cannot overwrite kernel enforcement evidence")
+        value.update(inventory)
         return value
 
     def _kill(self, name: str) -> None:
@@ -548,6 +588,7 @@ class DockerSandboxRunner:
         *,
         test_request: PytestRunRequest | None = None,
         prepared_source: SourceSnapshot | None = None,
+        test_bundle: TestBundle | None = None,
     ) -> ExecutionResult:
         duration_limit = policy.timeout_seconds if timeout is None else timeout
         if not 1 <= duration_limit <= policy.timeout_seconds:
@@ -559,7 +600,11 @@ class DockerSandboxRunner:
                 raise PolicyViolation(
                     "only fixed TZ/PYTHONHASHSEED target environment overrides are allowed"
                 )
-        overlay = injected_files(test_request.test_code) if test_request else None
+        selected = self.adapters
+        if test_request is not None:
+            test_bundle = test_bundle or self.adapters.framework.bundle(test_request.test_code)
+            selected = self._validate_bundle(test_request.test_code, test_bundle)
+        overlay = dict(test_bundle.files) if test_bundle is not None else None
         source = prepared_source or snapshot_repository(
             repository_path,
             ref=test_request.commit if test_request else "HEAD",
@@ -583,6 +628,7 @@ class DockerSandboxRunner:
             "excluded_source_paths": source.excluded,
             "phase": phase,
             "injected_files": source.injected,
+            "adapters": {"language": selected.language.id, "framework": selected.framework.id},
         }
         output = ProcessOutput(1, b"", b"")
         state: dict[str, object] = {}
@@ -615,7 +661,13 @@ class DockerSandboxRunner:
             backend.update(self._preflight())
             attempted = True  # A failed client may still have created the named container.
             created = self.transport.run(
-                self._create_arguments(name, command, policy, report_marker)
+                self._create_arguments(
+                    name,
+                    command,
+                    policy,
+                    report_marker,
+                    test_bundle.report_path if test_bundle else None,
+                )
             )
             creation_uncertain = created.timed_out
             backend["creation_timed_out"] = created.timed_out
@@ -628,25 +680,20 @@ class DockerSandboxRunner:
 
             def ready() -> None:
                 nonlocal cgroup_verified, sampler
-                backend["cgroup_probe"] = self._probe(name, policy)
+                backend["cgroup_probe"] = self._probe(name, policy, selected.language)
                 cgroup_verified = True
-                if test_request:
-                    framework = _mapping(
-                        self._json(
-                            [
-                                "exec",
-                                name,
-                                "/usr/local/bin/python3",
-                                "-I",
-                                "-c",
-                                "import json,pytest;"
-                                "print(json.dumps({'version':pytest.__version__}))",
-                            ]
-                        )
-                    )
+                if test_bundle is not None:
+                    framework = _mapping(self._json(["exec", name, *test_bundle.probe_argv]))
                     if not isinstance(framework.get("version"), str):
-                        raise SandboxError("pytest runtime is unavailable", stage="preflight")
-                    backend["pytest_version"] = framework["version"]
+                        raise SandboxError(
+                            f"{selected.framework.display_name} runtime is unavailable",
+                            stage="preflight",
+                        )
+                    if test_bundle.version_key in backend:
+                        raise PolicyViolation(
+                            "framework metadata cannot overwrite backend evidence"
+                        )
+                    backend[test_bundle.version_key] = framework["version"]
                 sampler = threading.Thread(target=sample, daemon=True)
                 sampler.start()
 

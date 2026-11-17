@@ -3,16 +3,13 @@
 from pathlib import Path
 from typing import Protocol
 
+from repo_repro.adapters.contracts import (
+    BundleBackend as BundleBackend,
+)
+from repo_repro.adapters.contracts import (
+    SnapshotBundleBackend as SnapshotBundleBackend,
+)
 from repo_repro.core.models import CommandSpec, ExecutionResult, SandboxPolicy
-from repo_repro.reproduction.models import PytestRunRequest, PytestSnapshotRequest
-
-
-class PytestBackend(Protocol):
-    def run_test(self, request: PytestRunRequest) -> ExecutionResult: ...
-
-
-class PytestSnapshotBackend(Protocol):
-    def run_snapshot(self, request: PytestSnapshotRequest) -> ExecutionResult: ...
 
 
 class SandboxBackend(Protocol):

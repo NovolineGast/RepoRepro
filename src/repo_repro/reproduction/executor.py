@@ -5,6 +5,16 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
+from repo_repro.adapters.contracts import (
+    AdapterSelection,
+    BundleBackend,
+    SnapshotBundleBackend,
+    SnapshotTestBackend,
+    TestBackend,
+    TestRunRequest,
+    TestSnapshotRequest,
+)
+from repo_repro.adapters.registry import default_selection
 from repo_repro.analyzer.repository import GitRepository
 from repo_repro.core.exceptions import ExecutionBackendError, PolicyViolation, RepoReproError
 from repo_repro.core.models import ArtifactRef, ExecutionResult, Termination
@@ -12,14 +22,9 @@ from repo_repro.reproduction.models import (
     AttemptAssessment,
     ExecutionEnvironment,
     GeneratedTest,
-    PytestRunRequest,
-    PytestSnapshotRequest,
     ReproductionResult,
     ReproductionStatus,
 )
-from repo_repro.reproduction.runtime import injected_files
-from repo_repro.reproduction.safety import check_test_code
-from repo_repro.sandbox.base import PytestBackend, PytestSnapshotBackend
 from repo_repro.storage.artifacts import FileArtifactStore
 from repo_repro.verification.verifier import assess_execution
 
@@ -27,14 +32,16 @@ from repo_repro.verification.verifier import assess_execution
 class ReproductionExecutor:
     def __init__(
         self,
-        backend: PytestBackend,
+        backend: TestBackend | BundleBackend,
         artifacts: FileArtifactStore,
         *,
-        snapshot_backend: PytestSnapshotBackend | None = None,
+        snapshot_backend: SnapshotTestBackend | SnapshotBundleBackend | None = None,
+        adapters: AdapterSelection | None = None,
     ) -> None:
         self.backend = backend
         self.artifacts = artifacts
         self.snapshot_backend = snapshot_backend
+        self.adapters = adapters or default_selection()
 
     def run_snapshot(
         self,
@@ -54,10 +61,8 @@ class ReproductionExecutor:
         generated: GeneratedTest,
     ) -> str:
         data = json.loads(self.artifacts.read_bytes(execution.backend_snapshot))
-        expected = sorted(
-            (path, hashlib.sha256(content).hexdigest())
-            for path, content in injected_files(generated.code).items()
-        )
+        bundle = self.adapters.framework.bundle(generated.code)
+        expected = list(bundle.hashes)
         actual = sorted(tuple(item) for item in data.get("injected_files", []))
         if (
             data.get("cleanup_confirmed") is not True
@@ -70,23 +75,21 @@ class ReproductionExecutor:
             raise PolicyViolation("the test or collector differs from the sealed bundle")
         if execution.resource_usage is None or not execution.resource_usage.cgroup_verified:
             raise PolicyViolation("runtime enforcement evidence is missing")
-        if execution.command.argv != ("python", "-I", "/workspace/repo_repro_generated/launch.py"):
+        if execution.command != bundle.command:
             raise PolicyViolation("unexpected reproduction command")
         probe = data.get("cgroup_probe")
-        if (
-            not isinstance(probe, dict)
-            or not probe.get("python_version")
-            or not data.get("image_id")
-        ):
+        if not isinstance(probe, dict) or not data.get("image_id"):
             raise PolicyViolation("runtime identity is incomplete")
         identity = {
             "test_bundle": actual,
             "image": data["image_id"],
             "policy": data.get("policy"),
-            "python": probe["python_version"],
-            "packages": probe.get("packages"),
             "limits": [probe.get(key) for key in ("memory", "swap", "cpu", "pids")],
         }
+        runtime = self.adapters.language.fingerprint_identity(probe)
+        if set(identity).intersection(runtime):
+            raise PolicyViolation("runtime identity collides with execution enforcement evidence")
+        identity.update(runtime)
         return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
     def run(
@@ -98,7 +101,7 @@ class ReproductionExecutor:
         *,
         _source: ArtifactRef | None = None,
     ) -> ReproductionResult:
-        check_test_code(generated.code)
+        self.adapters.framework.validate_code(generated.code)
         if hashlib.sha256(generated.code.encode()).hexdigest() != generated.sha256 or (
             generated.code != generated.proposal.test_code
         ):
@@ -130,7 +133,7 @@ class ReproductionExecutor:
         failed: str | None = None
         for repetition in range(1, environment.repetitions + 1):
             try:
-                request = PytestRunRequest(
+                request = TestRunRequest(
                     repository_path=repository_path,
                     commit=pinned_commit,
                     test_code=generated.code,
@@ -140,15 +143,26 @@ class ReproductionExecutor:
                     repetition=repetition,
                 )
                 if _source is None:
-                    result = self.backend.run_test(request)
+                    if isinstance(self.backend, BundleBackend):
+                        result = self.backend.run_bundle(
+                            request,
+                            self.adapters.framework.bundle(generated.code),
+                        )
+                    else:
+                        result = self.backend.run_test(request)
                 else:
                     assert self.snapshot_backend is not None
-                    result = self.snapshot_backend.run_snapshot(
-                        PytestSnapshotRequest(
-                            source=_source,
-                            **request.model_dump(exclude={"repository_path"}),
-                        )
+                    snapshot_request = TestSnapshotRequest(
+                        source=_source,
+                        **request.model_dump(exclude={"repository_path"}),
                     )
+                    if isinstance(self.snapshot_backend, SnapshotBundleBackend):
+                        result = self.snapshot_backend.run_snapshot_bundle(
+                            snapshot_request,
+                            self.adapters.framework.bundle(generated.code),
+                        )
+                    else:
+                        result = self.snapshot_backend.run_snapshot(snapshot_request)
                 executions.append(result)
                 self.artifacts.put_bytes(
                     result.model_dump_json().encode(), media_type="application/json"
@@ -163,11 +177,14 @@ class ReproductionExecutor:
                 ):
                     raise PolicyViolation("backend returned inconsistent execution identity")
                 evidence = (
-                    self.artifacts.read_bytes(result.pytest_report)
-                    if result.pytest_report
-                    else None
+                    self.artifacts.read_bytes(result.test_report) if result.test_report else None
                 )
-                assessment = assess_execution(result, generated.oracle, evidence)
+                assessment = assess_execution(
+                    result,
+                    generated.oracle,
+                    evidence,
+                    framework=self.adapters.framework,
+                )
                 assessments.append(assessment)
                 if result.termination is Termination.EXITED:
                     fingerprints.append(self._fingerprint(result, environment, generated))

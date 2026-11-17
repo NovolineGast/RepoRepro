@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Route Python/pytest analysis, planning, generation, execution bundles, runtime inventory, and evidence normalization through explicit language/framework adapters. Preserve the Python Capsule v1 codec and existing import paths.
+- Add instance-local adapter registration and the offline `repro adapters` command. No additional language or framework is enabled.
+
 - Add AI Issue diagnosis and bounded Git file selection through `repro investigate`.
 - Revise candidate tests using local validation errors and original-version execution evidence; optionally improve a supplied seed test.
 - Keep the oracle and environment sealed, deduplicate candidate ASTs, and run fixed-version verification only after selecting the final test.

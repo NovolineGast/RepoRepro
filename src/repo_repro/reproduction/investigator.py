@@ -1,6 +1,5 @@
 """Bounded AI planning and feedback, with independent execution and a sealed final test."""
 
-import ast
 import hashlib
 from pathlib import Path
 from uuid import uuid4
@@ -43,7 +42,8 @@ class AIInvestigator:
         self.provider = provider
         self.executor = executor
         self.artifacts = artifacts
-        self.generator = TestGenerator(artifacts, provider)
+        self.adapters = executor.adapters
+        self.generator = TestGenerator(artifacts, provider, adapters=self.adapters)
         self.redactor = SecretRedactor()
 
     def _clean(self, value: str, limit: int) -> str:
@@ -66,7 +66,7 @@ class AIInvestigator:
                 termination=item.termination,
                 stdout=excerpt(item.stdout, 4000),
                 stderr=excerpt(item.stderr, 4000),
-                pytest_evidence=excerpt(item.pytest_report, 12000),
+                pytest_evidence=excerpt(item.test_report, 12000),
             )
             for item in result.executions[:2]
         )
@@ -102,7 +102,7 @@ class AIInvestigator:
                 fixed_commit = view.commit
             if original == fixed_commit:
                 raise InputError("original and fixed commits must differ")
-        planned = AIPlanner(self.artifacts, self.provider).plan(
+        planned = AIPlanner(self.artifacts, self.provider, adapters=self.adapters).plan(
             issue, repository_path, oracle, ref=original, max_attempts=max_plan_attempts
         )
         calls = planned.model_calls
@@ -161,7 +161,7 @@ class AIInvestigator:
                 )
                 continue
             canonical = hashlib.sha256(
-                ast.dump(ast.parse(generated.code), include_attributes=False).encode()
+                self.adapters.framework.canonical_test(generated.code).encode()
             ).hexdigest()
             if canonical in seen:
                 attempts.append(
