@@ -37,6 +37,8 @@ jobs:
           cache: pip
       - name: Install development dependencies
         run: python -m pip install -e ".[dev,qa]"
+      - name: Check local documentation links
+        run: python scripts/check_doc_links.py
       - name: Test components without Docker
         run: python -m pytest -m "not docker_integration" --junitxml=reports/tests.xml --cov=repo_repro --cov-report=xml:reports/coverage.xml
       - name: Check style and types
