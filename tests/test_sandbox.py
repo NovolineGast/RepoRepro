@@ -187,6 +187,45 @@ def runner(tmp_path: Path, fake: FakeDocker) -> DockerSandboxRunner:
     )
 
 
+@pytest.mark.parametrize("failure", ["exit", "timeout", "output_limit"])
+def test_unavailable_daemon_gives_safe_hints_without_creating_a_container(
+    tmp_path: Path,
+    owned_repository: Path,
+    policy: SandboxPolicy,
+    failure: str,
+) -> None:
+    class UnavailableDocker(FakeDocker):
+        def run(self, arguments: Sequence[str], *, timeout: float = 15) -> ProcessOutput:
+            self.calls.append(list(arguments))
+            return ProcessOutput(
+                1 if failure == "exit" else 0,
+                b"",
+                b"Authorization: Bearer synthetic-private-daemon-detail",
+                timed_out=failure == "timeout",
+                output_limited=failure == "output_limit",
+            )
+
+    fake = UnavailableDocker(policy)
+    backend = runner(tmp_path, fake)
+    result = backend.run(
+        owned_repository, CommandSpec(argv=("python", "main.py")), resource_limits=policy
+    )
+    assert result.termination is Termination.INFRA_ERROR
+    assert result.exit_code is None
+    assert fake.calls == [["info", "--format", "{{json .}}"]]
+    assert not fake.exists and not fake.running
+    stdout, stderr = backend.read_output(result)
+    assert stdout == ""
+    assert "docker version" in stderr and "docker context show" in stderr
+    assert "Linux" in stderr and "daemon" in stderr
+    assert "synthetic-private-daemon-detail" not in stderr
+    snapshot = json.loads(backend.artifacts.read_bytes(result.backend_snapshot))
+    assert snapshot["cleanup_confirmed"] is True
+    assert "docker context show" in snapshot["infrastructure_error"]
+    assert "synthetic-private-daemon-detail" not in json.dumps(snapshot)
+    assert backend.artifacts.read_bytes(result.revision.source)
+
+
 def test_success_records_actual_exit_logs_snapshot_and_confirmed_cleanup(
     tmp_path: Path,
     owned_repository: Path,
