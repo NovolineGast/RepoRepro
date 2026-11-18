@@ -5,6 +5,7 @@
 - Add Go Modules inspection and a restricted standard-library Go test adapter for exported functions returning a scalar. Route AI planning/revision, execution and differential verification through the selected adapter.
 - Add Go Capsule 2.0.0 export/replay with strict version/runtime binding; keep Python Capsule 1.0.x compatible.
 - Add owned and pinned historical Go examples, native event validation, offline toolchain controls, and real Docker failure/E2E coverage.
+- Preserve GitHub Secret variable references in source workflows while continuing to reject literal credentials and private keys in replay data.
 
 - Route Python/pytest analysis, planning, generation, execution bundles, runtime inventory, and evidence normalization through explicit language/framework adapters. Preserve the Python Capsule v1 codec and existing import paths.
 - Add instance-local adapter registration and the offline `repro adapters` command.

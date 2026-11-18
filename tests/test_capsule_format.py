@@ -89,7 +89,7 @@ def test_required_runtime_contract_is_not_inferred(tmp_path: Path, field: str) -
 
 
 @pytest.mark.parametrize("version", ["2.0.0", "1.1.0", "1", "1.0.01"])
-def test_unknown_or_noncanonical_versions_are_rejected(tmp_path: Path, version: str) -> None:
+def test_incompatible_or_noncanonical_versions_are_rejected(tmp_path: Path, version: str) -> None:
     with pytest.raises(ValidationError):
         diagnostic_capsule(tmp_path / "invalid.zip", version=version)
 

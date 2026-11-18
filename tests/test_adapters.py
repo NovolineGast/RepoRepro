@@ -1,4 +1,4 @@
-"""Adapter contracts, real dispatch and v1 compatibility; no extra language is shipped."""
+"""Adapter contracts, explicit built-ins, real dispatch and v1 compatibility."""
 
 import hashlib
 import json
