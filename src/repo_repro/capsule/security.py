@@ -19,8 +19,11 @@ PRIVATE_KEY_HEADER = re.compile(rb"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----\r?
 KEY = re.compile(
     r"(?i)(?:^|[_-])(?:api[_-]?key|token|password|passwd|secret|authorization|credential)s?(?:$|[_-])"
 )
+SECRET_REFERENCE = r"\$\{\{\s*secrets\.[A-Za-z_][A-Za-z0-9_]*\s*\}\}"
 ASSIGNMENT = re.compile(
-    r"""(?i)(\b(?:[A-Za-z0-9]+[_-])*(?:api[_-]?key|(?:access[_-]?)?token|password|passwd|secret|authorization|credential)s?(?:[_-](?:access[_-]?key|key|token|password|secret))?\b["']?\s*[=:]\s*)(?:["']([^"'\r\n]*)["']|([^\s,;}]+))"""
+    r"""(?i)(\b(?:[A-Za-z0-9]+[_-])*(?:api[_-]?key|(?:access[_-]?)?token|password|passwd|secret|authorization|credential)s?(?:[_-](?:access[_-]?key|key|token|password|secret))?\b["']?\s*[=:]\s*)(?:["']([^"'\r\n]*)["']|("""
+    + SECRET_REFERENCE
+    + r"(?=$|[\s,;])|[^\s,;}]+))"
 )
 
 
@@ -38,7 +41,14 @@ class SecretRedactor:
         value = PRIVATE_KEY.sub("[REDACTED PRIVATE KEY]", value)
         value = re.sub(r"(?i)\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*", "Bearer [REDACTED]", value)
         value = re.sub(r"([A-Za-z][A-Za-z0-9+.-]*://)[^\s/@]+:[^\s/@]+@", r"\1[REDACTED]@", value)
-        return ASSIGNMENT.sub(lambda match: match[1] + '"[REDACTED]"', value)
+        return ASSIGNMENT.sub(
+            lambda match: (
+                match[0]
+                if re.fullmatch(SECRET_REFERENCE, match[2] or match[3])
+                else match[1] + '"[REDACTED]"'
+            ),
+            value,
+        )
 
     def value(self, value: object) -> object:
         if isinstance(value, str):

@@ -101,6 +101,8 @@ class ReproductionExecutor:
         *,
         _source: ArtifactRef | None = None,
     ) -> ReproductionResult:
+        if generated.oracle.language != self.adapters.language.id:
+            raise PolicyViolation("sealed test language differs from the executor adapter")
         self.adapters.framework.validate_code(generated.code)
         if hashlib.sha256(generated.code.encode()).hexdigest() != generated.sha256 or (
             generated.code != generated.proposal.test_code

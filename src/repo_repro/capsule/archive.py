@@ -81,7 +81,10 @@ def _verify(archive: zipfile.ZipFile) -> tuple[CapsuleManifest, dict[str, zipfil
             raise CapsuleError("metadata payload exceeds 8 MiB slot limit")
         if name.startswith("sources/") and member.file_size > 33_554_432:
             raise CapsuleError("source payload exceeds 32 MiB slot limit")
-        if name == "tests/test_reproduction.py" and member.file_size > 131_072:
+        if (
+            name in {"tests/test_reproduction.py", "tests/test_reproduction.go"}
+            and member.file_size > 131_072
+        ):
             raise CapsuleError("test payload exceeds text size limit")
     checksums: dict[str, str] = {}
     for line in _small(archive, entries["checksums.sha256"]).decode("ascii").splitlines():

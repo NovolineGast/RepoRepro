@@ -61,12 +61,16 @@ class AdapterRegistry:
 
 def builtin_registry() -> AdapterRegistry:
     # Imports are local to keep package import free of Git/process probes.
+    from repo_repro.adapters.go import GoLanguageAdapter
+    from repo_repro.adapters.go_test import GoTestAdapter
     from repo_repro.adapters.pytest import PytestAdapter
     from repo_repro.adapters.python import PythonLanguageAdapter
 
     registry = AdapterRegistry()
     registry.register_language(PythonLanguageAdapter())
     registry.register_framework(PytestAdapter())
+    registry.register_language(GoLanguageAdapter())
+    registry.register_framework(GoTestAdapter())
     return registry
 
 

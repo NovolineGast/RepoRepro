@@ -42,11 +42,11 @@ class InvestigationPlan(Record):
 
     @field_validator("source_paths", "test_paths")
     @classmethod
-    def python_paths(cls, paths: tuple[str, ...]) -> tuple[str, ...]:
+    def source_paths_only(cls, paths: tuple[str, ...]) -> tuple[str, ...]:
         for path in paths:
             ArtifactRef.validate_path(path)
-            if not path.endswith(".py"):
-                raise ValueError("investigation selects Python files only")
+            if not path.endswith((".py", ".go")):
+                raise ValueError("investigation selects supported source files only")
         if len(set(paths)) != len(paths):
             raise ValueError("duplicate investigation paths")
         return paths

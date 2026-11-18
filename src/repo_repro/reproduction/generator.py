@@ -55,7 +55,14 @@ class TestGenerator:
                 "plan": context.oracle.behavior_contract,
                 "closest_test": None,
                 "test_code": code,
-                "evidence": [{"source": "issue.body", "quote": context.oracle.issue_quote}],
+                "evidence": [
+                    {"source": "issue.body", "quote": context.oracle.issue_quote},
+                    *(
+                        {"source": item.path, "quote": item.content[:512]}
+                        for item in context.relevant_source_files[:1]
+                        if item.content
+                    ),
+                ],
             }
         )
         return self._generate(context, proposal)

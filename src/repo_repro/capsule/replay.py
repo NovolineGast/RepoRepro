@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 from pydantic import AwareDatetime
 
 from repo_repro.adapters.contracts import AdapterSelection
-from repo_repro.capsule.adapter_binding import v1_adapters
+from repo_repro.capsule.adapter_binding import capsule_adapters
 from repo_repro.capsule.archive import extract_capsule, validate_capsule
 from repo_repro.capsule.images import DockerImageArchive, scan_image
 from repo_repro.capsule.schema import CapsuleError, json_object
@@ -80,7 +80,7 @@ class CapsuleReplay:
         self, *, images: DockerImageArchive | None = None, adapters: AdapterSelection | None = None
     ) -> None:
         self.images = images or DockerImageArchive()
-        self.adapters = v1_adapters(adapters)
+        self.adapters = adapters
 
     def replay(
         self,
@@ -95,6 +95,7 @@ class CapsuleReplay:
                 "replay requires explicit caller authorization; inspect/extract never execute"
             )
         manifest = validate_capsule(capsule)
+        adapters = capsule_adapters(manifest.programming_language, self.adapters)
         if manifest.mode != "offline" or manifest.image is None or manifest.replay is None:
             raise CapsuleError("diagnostic-only capsules cannot be replayed")
         if workspace.exists() or workspace.is_symlink():
@@ -144,11 +145,11 @@ class CapsuleReplay:
         if hashlib.sha256(code_bytes).hexdigest() != manifest.replay.test_sha256:
             raise CapsuleError("test payload differs from the sealed recipe")
         code = code_bytes.decode("utf-8")
-        self.adapters.framework.validate_code(code)
+        adapters.framework.validate_code(code)
         helpers = tuple(
             sorted(
                 (name, hashlib.sha256(content).hexdigest())
-                for name, content in self.adapters.framework.bundle(code).files.items()
+                for name, content in adapters.framework.bundle(code).files.items()
             )
         )
         if helpers != manifest.replay.helper_hashes:
@@ -198,11 +199,9 @@ class CapsuleReplay:
         )
         environment = environment.model_copy(update={"policy": local_policy})
         backend = DockerSandboxRunner(
-            image=manifest.image.image_id, artifacts=store, adapters=self.adapters
+            image=manifest.image.image_id, artifacts=store, adapters=adapters
         )
-        executor = ReproductionExecutor(
-            backend, store, snapshot_backend=backend, adapters=self.adapters
-        )
+        executor = ReproductionExecutor(backend, store, snapshot_backend=backend, adapters=adapters)
         outcomes: list[ReproductionResult] = []
         for source in manifest.sources:
             snapshot = store.put_bytes(snapshots[source.side], media_type="application/x-tar")

@@ -62,10 +62,11 @@ jobs:
   docker:
     name: Docker and Capsule E2E
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       REPRO_REQUIRE_DOCKER: "1"
       REPRO_REQUIRE_ENGINE: "1"
+      REPRO_REQUIRE_GO: "1"
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -81,6 +82,15 @@ jobs:
           python -m pip download --only-binary=:all: --python-version=3.11 --dest .tools/demo-wheels pytest==9.2.0 pip==26.3 setuptools==84.2.1
           python examples/prepare_pytest_image.py --base-image python:3.11-slim-bookworm --wheelhouse .tools/demo-wheels --json > .tools/demo-images.json
           python -c "import json,os; d=json.load(open('.tools/demo-images.json')); f=open(os.environ['GITHUB_ENV'],'a'); f.write('REPRO_DOCKER_TEST_IMAGE='+d['base_image']+'\nREPRO_PYTEST_IMAGE='+d['pytest_image']+'\n'); f.close()"
+      - name: Prepare reviewed Go fixture image
+        shell: bash
+        run: |
+          docker pull --platform linux/amd64 golang:1.27-bookworm
+          base=$(python -c 'import json; print(json.load(open(".tools/demo-images.json"))["base_image"])')
+          go_image=$(python examples/prepare_go_image.py --base-image "$base" --go-image golang:1.27-bookworm)
+          echo "REPRO_GO_IMAGE=$go_image" >> "$GITHUB_ENV"
+          python -m examples.create_go_demo --image "$go_image" --output .repo-repro/go-demo
+          repro generate .repo-repro/go-demo/context.json --test-file .repo-repro/go-demo/test.go --artifacts .repo-repro/go-demo/artifacts --output .repo-repro/go-demo/generated.json
       - name: Run real Docker integration tests
         run: python -m pytest tests/integration --junitxml=reports/docker.xml
       - name: Run the documented example

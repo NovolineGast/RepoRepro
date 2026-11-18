@@ -1,4 +1,4 @@
-"""Stable Capsule 1.0.x contracts. No parsing or importing operation executes code."""
+"""Python Capsule 1.0.x and Go Capsule 2.0.0 contracts; parsing never executes target code."""
 
 import json
 import unicodedata
@@ -98,14 +98,16 @@ class CapsuleImage(Record):
 
 class ReplayRecipe(Record):
     test_id: UUID
-    test_path: Literal["tests/test_reproduction.py"] = "tests/test_reproduction.py"
+    test_path: Literal["tests/test_reproduction.py", "tests/test_reproduction.go"] = (
+        "tests/test_reproduction.py"
+    )
     test_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     oracle: FailureOracle
     helper_hashes: tuple[tuple[str, str], ...]
 
 
 class CapsuleManifest(Record):
-    schema_version: str = Field(pattern=r"^1\.0\.(?:0|[1-9][0-9]*)$")
+    schema_version: str = Field(pattern=r"^(?:1\.0\.(?:0|[1-9][0-9]*)|2\.0\.0)$")
     format: Literal["repo-repro-capsule"] = "repo-repro-capsule"
     capsule_id: UUID
     producer_version: str = __version__
@@ -113,9 +115,9 @@ class CapsuleManifest(Record):
     repository_url: str
     original_commit: str = Field(pattern=r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
     fixed_commit: str | None
-    programming_language: Literal["python"]
+    programming_language: Literal["python", "go"]
     runtime_version: str
-    test_framework: Literal["pytest"]
+    test_framework: Literal["pytest", "go-test"]
     reproduction_command: tuple[str, ...]
     timeout: int = Field(ge=1, le=3600)
     expected_behavior: str
@@ -134,8 +136,20 @@ class CapsuleManifest(Record):
 
     @model_validator(mode="after")
     def coherent(self) -> Self:
+        from repo_repro.adapters.go_test import GO_COMMAND
+
+        is_go = self.schema_version == "2.0.0"
+        language, framework = ("go", "go-test") if is_go else ("python", "pytest")
+        test_path = "tests/test_reproduction.go" if is_go else "tests/test_reproduction.py"
+        if (self.programming_language, self.test_framework) != (language, framework):
+            raise ValueError("Capsule schema and adapter pair do not match")
+        if self.replay and (
+            self.replay.test_path != test_path or self.replay.oracle.language != language
+        ):
+            raise ValueError("Capsule recipe language or test path does not match the schema")
         paths = [item.path for item in self.files]
-        if len({path.casefold() for path in paths}) != len(paths) or not REQUIRED.issubset(paths):
+        required = (REQUIRED - {"tests/test_reproduction.py"}) | {test_path}
+        if len({path.casefold() for path in paths}) != len(paths) or not required.issubset(paths):
             raise ValueError("duplicate paths or missing standard files")
         if {"repro.yaml", "checksums.sha256"}.intersection(paths):
             raise ValueError("self-referential catalog")
@@ -146,8 +160,8 @@ class CapsuleManifest(Record):
                 raise ValueError("invalid fixed commit")
             if self.fixed_commit == self.original_commit:
                 raise ValueError("original and fixed commits must differ")
-        if self.reproduction_command != COMMAND:
-            raise ValueError("v1 only supports the local trusted pytest launcher")
+        if self.reproduction_command != (GO_COMMAND if is_go else COMMAND):
+            raise ValueError("Capsule requires its local trusted framework launcher")
         catalog = {item.path: item for item in self.files}
         if self.mode == "diagnostic":
             if (
