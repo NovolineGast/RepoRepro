@@ -27,17 +27,10 @@ repro capsule unpack xstrings-64-diagnostics.zip ./case-evidence
 Open `case-evidence/report.md` for the verdict, `tests/test_reproduction.go` for the test, or
 `reference/result.json` for each attempt. The diagnostic download contains evidence only.
 
-## Replay the Capsule with Docker
+## Reproduce and replay with Docker
 
-Download `xstrings-64-replay.zip` and review the limits in the accompanying `xstrings-64-policy.json`
-before using it as your local policy. Replay requires Linux amd64 Docker with cgroup v2.
-The ZIP carries the pinned source snapshots, test, and runtime image, so replay needs no
-repository clone, model API key, or image pull.
-
-```bash
-repro capsule replay xstrings-64-replay.zip ./case-replay --policy xstrings-64-policy.json
-```
-
-Open `case-replay/replay-report.md` for the new verdict. For the steps to build a Capsule from
-source, follow the [Go historical case walkthrough](../go.md#historical-public-case).
+Follow the [Go historical case walkthrough](../go.md#historical-public-case) to prepare the reviewed
+runtime image, seal the supplied test, and capture your own replayable Capsule.
+This path requires Linux amd64 Docker with cgroup v2 and works with a caller-supplied test.
+After replay, open `replay-report.md` in the replay workspace for the new verdict.
 The upstream source and fix belong to the [xstrings project](https://github.com/huandu/xstrings).
