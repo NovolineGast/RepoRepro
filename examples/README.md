@@ -1,6 +1,6 @@
 # Examples
 
-The development branch also includes [Go examples](../docs/go.md): an owned connector bug and a pinned historical xstrings case, with Capsule v2 export/replay.
+The [Go examples](../docs/go.md) cover an owned connector bug and a pinned historical xstrings case, with Capsule v2 export and replay.
 
 Run these commands from a checkout with Repo Repro installed and the virtual environment activated. `issue.json` is a synthetic GitHub-shaped payload; it does not claim that the example URL exists.
 

@@ -6,16 +6,17 @@
 
 **Turn GitHub Bugs Into Reproducible, Verifiable Capsules.**
 
-Repo Repro captures a GitHub Issue, runs a reviewed test against pinned commits, and packages the evidence with a replayable environment.
+Give a maintainer the same failing test, the exact commits, and the environment that ran it. Repo Repro repeats the test before and after the fix and saves the result in a Capsule that another maintainer can replay.
 
-[Quick start](#quick-start) · [Demo](#demo) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[Quick start](#quick-start) · [Real Go case](docs/cases/xstrings-64.md) · [Releases](https://github.com/NovolineGast/RepoRepro/releases) · [Good first issues](https://github.com/NovolineGast/RepoRepro/contribute) · [Security](SECURITY.md)
 
-**v0.1.0 is an alpha release.** Execution currently supports Python + pytest on Linux amd64 Docker. A reproduction is an observation under a caller-defined failure oracle, not an automatic proof that an Issue or fix is correct.
-
-The development branch also supports a restricted Go / `go test` workflow, including AI candidates,
-verification and Capsule replay. See the [Go guide](docs/go.md) for scope, setup and a historical public case.
+**Alpha.** Supports simple Python/pytest and Go standard-library tests. Execution needs Linux amd64 Docker. A verdict applies to the selected test and caller-defined expected failure.
 
 ## Demo
+
+In [xstrings #64](https://github.com/huandu/xstrings/issues/64), `ToCamelCase("_")` returned `"__"`.
+The same test failed twice on the original commit and passed twice on the fix. Capsule replay
+matched both behavior and environment. [See the commits, test, and evidence](docs/cases/xstrings-64.md).
 
 ![Recorded CLI demo: reproduce, verify, export, and replay](docs/assets/demo.gif)
 
@@ -23,12 +24,12 @@ Recorded from the included calculator fixture: the original commit mishandles em
 
 ## Core features
 
-| | What v0.1.0 does |
+| | What Repo Repro does |
 | --- | --- |
-| **Reproduce Bugs** | Extract Issue context, inspect committed Python files, seal a user test or model candidate, and repeat it in fresh containers. |
+| **Reproduce Bugs** | Extract Issue context, inspect committed files, seal a user test or model candidate, and repeat it in fresh containers. |
 | **Verify Fixes** | Run the same test and environment on original/fixed commits; check target failure evidence, repeat consistency, and environment drift. |
 | **Replay Anywhere** | Export source snapshots, a frozen image, the test, and its configuration. Replay on a compatible Linux amd64 Docker host with the matching local runner. |
-| **Preserve Evidence** | Keep structured pytest reports, stdout/stderr, runtime inventory, resource settings, and content hashes. Export redacted diagnostics. |
+| **Preserve Evidence** | Keep structured test results, logs, runtime details, and hashes. Export redacted diagnostics for sharing. |
 
 ## Workflow
 
@@ -47,6 +48,8 @@ Analysis reads Git objects without checking out or executing the target. A model
 ## Installation
 
 Requires **Python 3.11+** and **Git**. Execution additionally needs a Linux amd64 Docker daemon with cgroup v2. Analysis, validation, and inspection work without Docker.
+
+For a packaged install, download the wheel for your chosen version from [GitHub Releases](https://github.com/NovolineGast/RepoRepro/releases) and pass the downloaded file to `python -m pip install`.
 
 Install from a checkout:
 
@@ -69,11 +72,12 @@ If activation is unavailable, use `.\.venv\Scripts\python.exe` and `.\.venv\Scri
 
 ## Quick start
 
-Read the included synthetic Issue without network access:
+Read the included synthetic Issue locally. This step needs no Docker, network, or API key after installation.
 
 ```bash
 repro --help
 repro version
+repro adapters
 repro issue --issue-json examples/issue.json
 ```
 
@@ -128,11 +132,11 @@ Uppercase arguments are inputs you supply. [The manual demo](examples/README.md#
 
 Single-version results distinguish `REPRODUCED`, `NOT_REPRODUCED`, `INCONCLUSIVE`, `ENVIRONMENT_ERROR`, and `TIMEOUT`. Differential success is `DIFFERENTIAL_VALIDATED`; flaky runs, unrelated failures, and missing evidence cannot produce it. Only the selected target test is verified, not the full project's regression suite.
 
-### AI investigation (unreleased)
+### AI investigation
 
-The development branch adds `repro investigate`: AI interprets the Issue, selects relevant source/test files, and revises candidates using validation errors or original-version execution feedback. Planning and candidate budgets bound the search. The caller's oracle, runtime, and independent verifier stay fixed; fixed-version results are not used to tune candidates.
+`repro investigate` interprets the Issue, selects relevant source and test files, and revises candidates using validation errors or original-version execution feedback. The caller controls the expected failure and runtime. Fixed-version execution begins after the final candidate is selected.
 
-An optional `--initial-test` lets the model improve a weak existing reproducer. The selected test and ordinary result remain compatible with Capsule export. See the [AI investigation guide](docs/ai-investigation.md) for a complete DeepSeek example, limits, and the real-model validation scope. The v0.1.0 release assets retain their original generator.
+Use `--initial-test` to start from an existing reproducer. The [AI investigation guide](docs/ai-investigation.md) includes a DeepSeek example and describes which paths were tested with a live provider.
 
 ## Capsule example
 
@@ -162,7 +166,7 @@ reproduction/
 | Language / framework | Status |
 | --- | --- |
 | Python / pytest | Supported: one simple `test_repro()` with no fixtures, markers, or parametrization. |
-| Go / standard-library testing | Unreleased: single pure-Go module; exported function with a scalar return-value assertion. [Guide](docs/go.md). |
+| Go / standard-library testing | Since v0.2.0. Single pure-Go module; exported function with a scalar return-value assertion. [Guide](docs/go.md). |
 | JavaScript, TypeScript, Rust, Java, others | Not implemented. |
 
 The CLI targets Python 3.11–3.14 on Windows and Linux through CI. Sandbox execution and Capsule images currently require Linux amd64. The provided image helper is specific to Python 3.11.
@@ -181,7 +185,7 @@ The CLI targets Python 3.11–3.14 on Windows and Linux through CI. Sandbox exec
 ```text
 CLI
 ├── github/                 Issue retrieval and deterministic parsing
-├── analyzer/               Read-only Git tree and Python project inspection
+├── analyzer/ + adapters/   Read-only Git tree and language-specific inspection
 ├── ai/ + reproduction/     Candidate generation, validation, repeated execution
 ├── sandbox/                Docker lifecycle, snapshots, limits, output capture
 ├── verification/           Target-failure and differential evidence rules
@@ -191,20 +195,21 @@ CLI
 
 Shared contracts live in `core/`. The AI provider and sandbox use injectable interfaces. Generic report generation and dependency-environment preparation remain unfinished; Capsule replay has its own JSON/Markdown reports.
 
-The development branch exposes trusted `LanguageAdapter` and `TestFrameworkAdapter` registrations through `adapters/`. Run `repro adapters` to inspect the Python/pytest and Go/go-test built-ins. The [adapter guide](docs/adapters.md) describes dispatch and compatibility boundaries.
+Run `repro adapters` to see the built-ins. The [adapter guide](docs/adapters.md) explains framework integration and Capsule compatibility.
 
 ## Roadmap
 
 - [ ] Prepare and freeze project dependency environments.
 - [ ] Support broader pytest fixtures and parametrization.
-- [x] Add an initial Go adapter with verification and Capsule replay (unreleased).
 - [ ] Broaden Go test shapes and add further language/framework adapters.
 - [ ] Add stronger isolation backends and independent evidence collection.
 - [ ] Add a SQLite index and general report generation.
 
 ## Contributing
 
-Bug reports, focused fixes, documentation, and owned reproduction fixtures are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). CI runs style/type checks, non-Docker tests, real Docker integration, and package installation checks. CI results are visible in [Actions](https://github.com/NovolineGast/RepoRepro/actions).
+For a first PR, pick a [good first issue](https://github.com/NovolineGast/RepoRepro/contribute) and check its acceptance criteria. Many tasks need only Python and Git. The [contribution guide](CONTRIBUTING.md) covers setup and checks.
+
+Have a public Python or Go bug with a known fix? Propose it as a [reproduction case](https://github.com/NovolineGast/RepoRepro/issues/new/choose). If the project helps you, a star makes it easier to find again when the next release is out.
 
 ## License
 

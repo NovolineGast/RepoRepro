@@ -17,6 +17,8 @@ REQUIRED = {
     ".github/workflows/ci.yml",
     "docs/assets/banner.svg",
     "docs/assets/demo.gif",
+    "docs/go.md",
+    "docs/cases/xstrings-64.md",
     "examples/run_demo.py",
     "examples/issue.json",
 }

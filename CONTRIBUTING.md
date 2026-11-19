@@ -1,6 +1,10 @@
 # Contributing
 
-Repo Repro is an early Python + pytest toolkit. Small, reviewable changes and reproducible bug reports are especially useful.
+Small fixes, clear examples, and reproducible bug reports help people try Repo Repro.
+
+Start with a [good first issue](https://github.com/NovolineGast/RepoRepro/contribute). Each issue describes the expected result and checks. If someone is already working on it, pick another task to avoid duplicate work. A draft PR is welcome when you are unsure about the approach.
+
+Documentation and component tests usually need only Python and Git. If you know a public bug with original and fixed commits, use the [reproduction case template](https://github.com/NovolineGast/RepoRepro/issues/new/choose).
 
 ## Development setup
 
@@ -25,13 +29,13 @@ python -m build
 python -m pip check
 ```
 
-For sandbox, reproduction, verification, or Capsule changes, also run the real Docker tests. Prepare images using [the example instructions](examples/README.md#prepare-test-images), set `REPRO_DOCKER_TEST_IMAGE` and `REPRO_PYTEST_IMAGE` to the returned immutable IDs, then:
+For sandbox, reproduction, verification, or Capsule changes, also run the real Docker tests. Prepare the [Python fixture images](examples/README.md#prepare-test-images) and the [Go fixture image](docs/go.md#owned-example). Set `REPRO_DOCKER_TEST_IMAGE`, `REPRO_PYTEST_IMAGE`, and `REPRO_GO_IMAGE` to the returned immutable IDs.
 
 ```bash
-REPRO_REQUIRE_DOCKER=1 REPRO_REQUIRE_ENGINE=1 python -m pytest tests/integration
+REPRO_REQUIRE_DOCKER=1 REPRO_REQUIRE_ENGINE=1 REPRO_REQUIRE_GO=1 python -m pytest tests/integration
 ```
 
-The two required-image flags turn missing prerequisites into failures. A default `pytest` run can skip Docker tests when images are not configured; disclose this in your PR. Do not use skipped tests or weaker assertions to conceal failures.
+The required-image flags make missing prerequisites fail explicitly. If you cannot run Docker locally, mention that in the PR so reviewers can check the CI results.
 
 ## Changes we can review
 
