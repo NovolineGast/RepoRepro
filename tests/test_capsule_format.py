@@ -22,7 +22,13 @@ from repo_repro.capsule.schema import (
 from repo_repro.capsule.security import SecretRedactor
 
 
-def diagnostic_capsule(path: Path, *, version: str = "1.0.0") -> CapsuleManifest:
+def diagnostic_capsule(
+    path: Path,
+    *,
+    version: str = "1.0.0",
+    fixed_commit: str | None = None,
+    runtime_version: str = "unknown",
+) -> CapsuleManifest:
     files = {name: b"diagnostic data\n" for name in REQUIRED}
     manifest = CapsuleManifest(
         schema_version=version,
@@ -33,8 +39,8 @@ def diagnostic_capsule(path: Path, *, version: str = "1.0.0") -> CapsuleManifest
         mode="diagnostic",
         repository_url="https://github.com/example/project",
         original_commit="a" * 40,
-        fixed_commit=None,
-        runtime_version="unknown",
+        fixed_commit=fixed_commit,
+        runtime_version=runtime_version,
         timeout=120,
         expected_behavior="correct output",
         observed_behavior="unknown",

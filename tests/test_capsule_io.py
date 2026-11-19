@@ -165,6 +165,64 @@ def test_validate_and_unpack_cli_do_not_run_bundled_scripts(tmp_path: Path) -> N
     assert unpacked.exit_code == 0, unpacked.output
 
 
+@pytest.mark.parametrize("diagnostic_only", [True, False])
+def test_inspect_can_summarize_a_validated_capsule(tmp_path: Path, diagnostic_only: bool) -> None:
+    store = FileArtifactStore(tmp_path / "private")
+    path = tmp_path / "case.zip"
+    expected = CapsuleExporter(store, images=FakeImageStore()).export(
+        captured(store), path, diagnostic_only=diagnostic_only
+    )
+    runner = CliRunner()
+
+    summary = runner.invoke(app, ["capsule", "inspect", str(path), "--summary"])
+    assert summary.exit_code == 0, summary.output
+    assert summary.stdout.splitlines() == [
+        f"Schema version: {expected.schema_version}",
+        f"Mode: {expected.mode}",
+        "Language/framework: python / pytest",
+        f"Runtime version: {expected.runtime_version}",
+        f"Execution status: {expected.execution_status}",
+        f"Original commit: {expected.original_commit}",
+        "Fixed commit: unavailable",
+    ]
+
+    default = runner.invoke(app, ["capsule", "inspect", str(path)])
+    checked = runner.invoke(app, ["capsule", "validate", str(path)])
+    assert default.exit_code == checked.exit_code == 0
+    manifest_json = expected.model_dump(mode="json")
+    assert json.loads(default.stdout) == json.loads(checked.stdout) == manifest_json
+
+
+def test_inspect_summary_keeps_both_commits_and_escapes_free_form_metadata(tmp_path: Path) -> None:
+    from tests.test_capsule_format import diagnostic_capsule
+
+    path = tmp_path / "differential.zip"
+    fixed = "b" * 40
+    runtime = "Python 3.12\n测试"
+    manifest = diagnostic_capsule(path, fixed_commit=fixed, runtime_version=runtime)
+
+    summary = CliRunner().invoke(app, ["capsule", "inspect", str(path), "--summary"])
+
+    assert summary.exit_code == 0, summary.output
+    assert f"Original commit: {manifest.original_commit}" in summary.stdout
+    assert f"Fixed commit: {fixed}" in summary.stdout
+    assert f"Runtime version: {runtime!a}" in summary.stdout.splitlines()
+
+
+def test_inspect_summary_reports_archive_errors_like_default_json(tmp_path: Path) -> None:
+    path = tmp_path / "damaged.zip"
+    path.write_bytes(b"not a valid capsule")
+    runner = CliRunner()
+    args = ["capsule", "inspect", str(path)]
+
+    summary = runner.invoke(app, [*args, "--summary"])
+    default = runner.invoke(app, args)
+
+    assert summary.exit_code == default.exit_code == 3
+    assert summary.stdout == ""
+    assert summary.stderr == default.stderr
+
+
 def test_replay_comparison_marks_runtime_drift_separately(tmp_path: Path) -> None:
     baseline = captured(FileArtifactStore(tmp_path)).model_copy(
         update={"environment_fingerprints": ("old", "old")}

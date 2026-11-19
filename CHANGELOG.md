@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add an optional text summary to `repro capsule inspect` for the recorded result, runtime and pinned commits.
+
 ## 0.2.0 — 2026-11-20
 
 - Add Go Modules inspection and a restricted standard-library Go test adapter for exported functions returning a scalar. Route AI planning/revision, execution and differential verification through the selected adapter.
