@@ -1,8 +1,8 @@
 # AI investigation
 
-`repro investigate` combines model-assisted diagnosis and file selection with a bounded test revision loop. It is available on the development branch after v0.1.0; the v0.1.0 release assets retain their original one-shot generator.
+`repro investigate` combines model-assisted diagnosis and file selection with a bounded test revision loop. It is available from v0.2.0.
 
-The model interprets the Issue, selects relevant Python files from a pinned Git catalog, and writes a reproduction candidate. Local validation checks the plan, citations, test shape, and repository calls. Accepted candidates run repeatedly in fresh containers. Validation errors and eligible original-version execution feedback can inform a replacement candidate.
+The model interprets the Issue, selects relevant files from a pinned Git catalog, and writes a reproduction candidate for Python or Go. Local validation checks the plan, citations, test shape, and repository calls. Accepted candidates run repeatedly in fresh containers. Validation errors and eligible original-version execution feedback can inform a replacement candidate.
 
 The caller supplies the failure oracle and runtime. The model cannot change them. Once a candidate reproduces the target failure, it is frozen. Optional original/fixed verification runs independently; fixed-version source and execution feedback are not supplied to the model for tuning the test.
 

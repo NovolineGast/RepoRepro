@@ -1,6 +1,6 @@
 # Adapter architecture
 
-The development branch routes Python/pytest and a restricted Go/standard-library test workflow through explicit adapters. See the [Go guide](go.md) for the supported subset and Capsule v2.
+Repo Repro routes Python/pytest and a restricted Go/standard-library test workflow through explicit adapters. See the [Go guide](go.md) for the supported subset and Capsule v2.
 
 ```bash
 repro adapters

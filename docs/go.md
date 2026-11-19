@@ -1,8 +1,7 @@
-# Go support (unreleased)
+# Go support
 
-The development branch supports one root Go module, pure Go, standard-library tests,
-and exported functions returning a single comparable scalar. Python/pytest remains supported.
-The v0.1.0 release assets do not contain this adapter.
+Since v0.2.0, Repo Repro supports one root Go module, pure Go, standard-library tests,
+and exported functions returning a single comparable scalar.
 
 ## Scope
 
@@ -117,6 +116,8 @@ python -m examples.create_go_public_case --repository .tools/xstrings \
 This prepares a caller-owned test and a short attributed Issue excerpt. Use the same generate,
 verify, export and replay commands with the public paths and pinned commits. It neither patches
 upstream source nor runs upstream tests on the host.
+
+[See the recorded results and inspect the case evidence](cases/xstrings-64.md).
 
 ## Capsule compatibility
 

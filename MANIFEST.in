@@ -6,7 +6,8 @@ recursive-include tests *.py *.json
 include docs/sandbox.md docs/reproduction.md docs/capsule-v1.md docs/capsule-v1.schema.json
 include docs/releasing.md
 include docs/ai-investigation.md
-include docs/adapters.md
+include docs/adapters.md docs/go.md
+recursive-include docs/cases *.md
 recursive-include docs/assets *.svg *.gif
 recursive-include examples *.md *.py *.json
 recursive-include scripts *.py

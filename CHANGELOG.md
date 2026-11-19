@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 — 2026-11-20
+
 - Add Go Modules inspection and a restricted standard-library Go test adapter for exported functions returning a scalar. Route AI planning/revision, execution and differential verification through the selected adapter.
 - Add Go Capsule 2.0.0 export/replay with strict version/runtime binding; keep Python Capsule 1.0.x compatible.
 - Add owned and pinned historical Go examples, native event validation, offline toolchain controls, and real Docker failure/E2E coverage.
@@ -15,6 +17,10 @@
 - Keep the oracle and environment sealed, deduplicate candidate ASTs, and run fixed-version verification only after selecting the final test.
 - Add provider reasoning/output-budget options and a reusable Unicode normalization fixture. Real DeepSeek acceptance covers generation and feedback-driven revision; regular CI uses controlled responses.
 - Emit lossless ASCII-escaped JSON on the console so Unicode results do not fail under legacy encodings; file output stays UTF-8.
+- Add a public xstrings case walkthrough and a template for proposing reproduction cases.
+- Include the Go guide and public case in source distributions.
+- Improve Docker daemon diagnostics ([#4](https://github.com/NovolineGast/RepoRepro/pull/4), @jwalith4418-Mj).
+- Check tracked Markdown links in CI ([#5](https://github.com/NovolineGast/RepoRepro/pull/5), @CyberKun).
 
 ## 0.1.0 — 2026-11-16
 
