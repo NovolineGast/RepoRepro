@@ -30,6 +30,8 @@ class ReproductionStep(Record):
 
 
 class EnvironmentInfo(Record):
+    go_module: str | None = None
+    runtime_requirements: tuple[str, ...] = ()
     python_requirements: tuple[str, ...] = ()
     dependency_files: tuple[str, ...] = ()
     package_managers: tuple[str, ...] = ()

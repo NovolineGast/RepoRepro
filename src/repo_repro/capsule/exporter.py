@@ -11,11 +11,10 @@ from typing import Literal
 from uuid import uuid4
 
 from repo_repro.adapters.contracts import AdapterSelection
-from repo_repro.capsule.adapter_binding import v1_adapters
+from repo_repro.capsule.adapter_binding import capsule_adapters
 from repo_repro.capsule.archive import validate_capsule
 from repo_repro.capsule.images import DockerImageArchive
 from repo_repro.capsule.schema import (
-    COMMAND,
     SCHEMA_VERSION,
     CapsuleError,
     CapsuleFile,
@@ -50,7 +49,7 @@ class CapsuleExporter:
         self.artifacts = artifacts
         self.redactor = redactor or SecretRedactor()
         self.images = images or DockerImageArchive()
-        self.adapters = v1_adapters(adapters)
+        self.adapters = adapters
 
     def export(
         self,
@@ -59,6 +58,13 @@ class CapsuleExporter:
         *,
         diagnostic_only: bool = False,
     ) -> CapsuleManifest:
+        original_result = result.original if isinstance(result, DifferentialResult) else result
+        adapters = capsule_adapters(original_result.generated_test.oracle.language, self.adapters)
+        test_path: Literal["tests/test_reproduction.go", "tests/test_reproduction.py"] = (
+            "tests/test_reproduction.go"
+            if adapters.language.id == "go"
+            else "tests/test_reproduction.py"
+        )
         destination = destination.absolute()
         if destination.exists() or destination.is_symlink():
             raise CapsuleError("capsule destination already exists")
@@ -142,7 +148,7 @@ class CapsuleExporter:
                         probe = backend.get("cgroup_probe", {})
                         if not isinstance(probe, dict):
                             raise CapsuleError("captured runtime inventory is invalid")
-                        runtime = self.adapters.language.runtime_version(probe)
+                        runtime = adapters.language.runtime_version(probe)
                 if not diagnostic_only:
                     captured = source_files(
                         self.artifacts.read_bytes(group.executions[0].revision.source)
@@ -156,7 +162,7 @@ class CapsuleExporter:
                                 "source snapshot contradicts the captured helper hashes"
                             )
                     if (
-                        captured.get(self.adapters.framework.bundle(generated.code).test_path)
+                        captured.get(adapters.framework.bundle(generated.code).test_path)
                         != generated.code.encode()
                     ):
                         raise CapsuleError("captured test differs from the sealed test")
@@ -172,7 +178,7 @@ class CapsuleExporter:
                     sources.append(CapsuleSource(side=side, commit=group.commit, path=source_name))
             environment = original.environment
             if not diagnostic_only:
-                self.adapters.framework.validate_code(generated.code)
+                adapters.framework.validate_code(generated.code)
                 if hashlib.sha256(generated.code.encode()).hexdigest() != generated.sha256:
                     raise CapsuleError("sealed test hash mismatch")
                 if len(actual_images) != 1 or captured_helpers is None:
@@ -184,6 +190,7 @@ class CapsuleExporter:
                 roles[image.path] = FileRole.REPLAY
                 environment = environment.model_copy(update={"image": image.image_id})
                 recipe = ReplayRecipe(
+                    test_path=test_path,
                     test_id=generated.id,
                     test_sha256=generated.sha256,
                     oracle=generated.oracle,
@@ -192,7 +199,7 @@ class CapsuleExporter:
                 self.redactor.critical(recipe.model_dump_json().encode())
             role = FileRole.DIAGNOSTIC if diagnostic_only else FileRole.REPLAY
             put(
-                "tests/test_reproduction.py",
+                test_path,
                 (
                     self.redactor.text(generated.code) if diagnostic_only else generated.code
                 ).encode(),
@@ -270,10 +277,10 @@ class CapsuleExporter:
                 for name, file_role in sorted(roles.items())
             )
             manifest = CapsuleManifest(
-                schema_version=SCHEMA_VERSION,
-                programming_language="python",
-                test_framework="pytest",
-                reproduction_command=COMMAND,
+                schema_version="2.0.0" if adapters.language.id == "go" else SCHEMA_VERSION,
+                programming_language="go" if adapters.language.id == "go" else "python",
+                test_framework="go-test" if adapters.language.id == "go" else "pytest",
+                reproduction_command=adapters.framework.bundle(generated.code).command.argv,
                 capsule_id=uuid4(),
                 mode="diagnostic" if diagnostic_only else "offline",
                 repository_url=repository,

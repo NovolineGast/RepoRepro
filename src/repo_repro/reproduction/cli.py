@@ -8,6 +8,7 @@ from typing import Annotated
 import typer
 from pydantic import SecretStr, ValidationError
 
+from repo_repro.adapters.registry import builtin_registry
 from repo_repro.ai.openai_compatible import OpenAICompatibleProvider, OpenAIConfig
 from repo_repro.core.exceptions import InputError, RepoReproError
 from repo_repro.core.models import Record
@@ -74,9 +75,12 @@ def generate(
     """Generate a candidate, or seal an explicit user test without AI."""
     try:
         data = ReproductionInput.model_validate_json(read_json(context))
+        adapters = builtin_registry().resolve(data.oracle.language)
         store = FileArtifactStore(artifacts)
         if test_file:
-            candidate = TestGenerator(store).seal_code(data, read_json(test_file).decode("utf-8"))
+            candidate = TestGenerator(store, adapters=adapters).seal_code(
+                data, read_json(test_file).decode("utf-8")
+            )
         else:
             if model is None:
                 raise InputError("provide --model or --test-file")
@@ -92,7 +96,7 @@ def generate(
                 ),
                 store,
             )
-            candidate = TestGenerator(store, provider).generate(data)
+            candidate = TestGenerator(store, provider, adapters=adapters).generate(data)
         write_result(candidate, output)
     except (RepoReproError, ValidationError, ValueError, OSError) as error:
         failure(error)
@@ -109,10 +113,13 @@ def reproduce(
     """Run a sealed test repeatedly in fresh sandbox containers."""
     try:
         generated = GeneratedTest.model_validate_json(read_json(test))
+        adapters = builtin_registry().resolve(generated.oracle.language)
         settings = ExecutionEnvironment.model_validate_json(read_json(environment))
         store = FileArtifactStore(artifacts)
-        backend = DockerSandboxRunner(image=settings.image, artifacts=store)
-        result = ReproductionExecutor(backend, store).run(repository, commit, generated, settings)
+        backend = DockerSandboxRunner(image=settings.image, artifacts=store, adapters=adapters)
+        result = ReproductionExecutor(backend, store, adapters=adapters).run(
+            repository, commit, generated, settings
+        )
         write_result(result, output)
         if result.status is not ReproductionStatus.REPRODUCED:
             raise typer.Exit(1)
@@ -132,10 +139,13 @@ def verify(
     """Compare commits using the exact same test and runtime."""
     try:
         generated = GeneratedTest.model_validate_json(read_json(test))
+        adapters = builtin_registry().resolve(generated.oracle.language)
         settings = ExecutionEnvironment.model_validate_json(read_json(environment))
         store = FileArtifactStore(artifacts)
-        backend = DockerSandboxRunner(image=settings.image, artifacts=store)
-        result = DifferentialVerifier(ReproductionExecutor(backend, store), store).verify(
+        backend = DockerSandboxRunner(image=settings.image, artifacts=store, adapters=adapters)
+        result = DifferentialVerifier(
+            ReproductionExecutor(backend, store, adapters=adapters), store
+        ).verify(
             repository,
             original_commit,
             fixed_commit,
@@ -181,6 +191,7 @@ def investigate(
         if not 1 <= max_candidates <= 5:
             raise InputError("--max-candidates must be between 1 and 5")
         contract = FailureOracle.model_validate_json(read_json(oracle))
+        adapters = builtin_registry().resolve(contract.language)
         settings = ExecutionEnvironment.model_validate_json(read_json(environment))
         issue = IssueParser().parse(issue_json=issue_json)
         store = FileArtifactStore(artifacts)
@@ -197,8 +208,10 @@ def investigate(
             ),
             store,
         )
-        backend = DockerSandboxRunner(image=settings.image, artifacts=store)
-        session = AIInvestigator(provider, ReproductionExecutor(backend, store), store).run(
+        backend = DockerSandboxRunner(image=settings.image, artifacts=store, adapters=adapters)
+        session = AIInvestigator(
+            provider, ReproductionExecutor(backend, store, adapters=adapters), store
+        ).run(
             issue,
             repository,
             contract,

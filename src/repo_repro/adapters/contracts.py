@@ -139,6 +139,7 @@ class SessionEvidence:
     phases: tuple[PhaseEvidence, ...]
     session_complete: bool
     exit_code: int
+    required_phases: tuple[str, ...] = ("setup", "call", "teardown")
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,4 @@
-"""Adapter contracts, real dispatch and v1 compatibility; no extra language is shipped."""
+"""Adapter contracts, explicit built-ins, real dispatch and v1 compatibility."""
 
 import hashlib
 import json
@@ -43,17 +43,19 @@ from tests.test_differential import IMAGE
 from tests.test_sandbox import FakeDocker
 
 
-def test_registry_has_only_python_pytest_and_rejects_unknown_identifiers() -> None:
+def test_registry_has_python_and_go_and_rejects_unknown_identifiers() -> None:
     registry = builtin_registry()
     assert registry.describe() == (
+        {"language": "go", "source_suffixes": (".go",), "frameworks": ("go-test",)},
         {"language": "python", "source_suffixes": (".py",), "frameworks": ("pytest",)},
     )
     assert registry.detect(("main.py",)).framework.id == "pytest"
-    for language, framework in (("go", None), ("python", "vitest"), ("module:plugin", None)):
+    assert registry.resolve("go").framework.id == "go-test"
+    for language, framework in (("rust", None), ("python", "vitest"), ("module:plugin", None)):
         with pytest.raises(InputError):
             registry.resolve(language, framework)
     with pytest.raises(InputError):
-        registry.detect(("main.go",))
+        registry.detect(("main.rs",))
 
 
 def test_registry_registration_is_explicit_and_duplicate_safe() -> None:
@@ -455,5 +457,8 @@ def test_adapter_discovery_cli_is_offline_and_has_no_workspace_side_effects(
     monkeypatch.chdir(tmp_path)
     result = CliRunner().invoke(app, ["adapters"])
     assert result.exit_code == 0, result.output
-    assert json.loads(result.stdout)[0]["frameworks"] == ["pytest"]
+    assert {row["language"]: row["frameworks"] for row in json.loads(result.stdout)} == {
+        "python": ["pytest"],
+        "go": ["go-test"],
+    }
     assert not (tmp_path / ".repo-repro").exists()

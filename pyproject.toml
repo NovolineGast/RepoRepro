@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "repo-repro"
 dynamic = ["version"]
-description = "Reproduce Python bugs, verify fixes, and replay evidence Capsules."
+description = "Reproduce bugs, verify fixes, and replay evidence Capsules."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Repo Repro contributors" }]
-keywords = ["bugs", "reproduction", "pytest", "github"]
+keywords = ["bugs", "reproduction", "pytest", "go", "github"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",

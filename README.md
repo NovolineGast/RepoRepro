@@ -6,11 +6,14 @@
 
 **Turn GitHub Bugs Into Reproducible, Verifiable Capsules.**
 
-Repo Repro captures a GitHub Issue, runs a reviewed Python test against pinned commits, and packages the evidence with a replayable environment.
+Repo Repro captures a GitHub Issue, runs a reviewed test against pinned commits, and packages the evidence with a replayable environment.
 
 [Quick start](#quick-start) · [Demo](#demo) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 **v0.1.0 is an alpha release.** Execution currently supports Python + pytest on Linux amd64 Docker. A reproduction is an observation under a caller-defined failure oracle, not an automatic proof that an Issue or fix is correct.
+
+The development branch also supports a restricted Go / `go test` workflow, including AI candidates,
+verification and Capsule replay. See the [Go guide](docs/go.md) for scope, setup and a historical public case.
 
 ## Demo
 
@@ -159,7 +162,8 @@ reproduction/
 | Language / framework | Status |
 | --- | --- |
 | Python / pytest | Supported: one simple `test_repro()` with no fixtures, markers, or parametrization. |
-| JavaScript, TypeScript, Go, Rust, Java, others | Not implemented. |
+| Go / standard-library testing | Unreleased: single pure-Go module; exported function with a scalar return-value assertion. [Guide](docs/go.md). |
+| JavaScript, TypeScript, Rust, Java, others | Not implemented. |
 
 The CLI targets Python 3.11–3.14 on Windows and Linux through CI. Sandbox execution and Capsule images currently require Linux amd64. The provided image helper is specific to Python 3.11.
 
@@ -187,13 +191,14 @@ CLI
 
 Shared contracts live in `core/`. The AI provider and sandbox use injectable interfaces. Generic report generation and dependency-environment preparation remain unfinished; Capsule replay has its own JSON/Markdown reports.
 
-The development branch also exposes trusted `LanguageAdapter` and `TestFrameworkAdapter` registrations through `adapters/`. Run `repro adapters` to inspect the built-ins. Current execution support remains Python/pytest; the [adapter guide](docs/adapters.md) describes dispatch, compatibility boundaries, and the work required for another language.
+The development branch exposes trusted `LanguageAdapter` and `TestFrameworkAdapter` registrations through `adapters/`. Run `repro adapters` to inspect the Python/pytest and Go/go-test built-ins. The [adapter guide](docs/adapters.md) describes dispatch and compatibility boundaries.
 
 ## Roadmap
 
 - [ ] Prepare and freeze project dependency environments.
 - [ ] Support broader pytest fixtures and parametrization.
-- [ ] Add language/framework adapters beyond Python.
+- [x] Add an initial Go adapter with verification and Capsule replay (unreleased).
+- [ ] Broaden Go test shapes and add further language/framework adapters.
 - [ ] Add stronger isolation backends and independent evidence collection.
 - [ ] Add a SQLite index and general report generation.
 

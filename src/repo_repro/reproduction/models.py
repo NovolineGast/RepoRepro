@@ -2,10 +2,10 @@
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from repo_repro.core.context import EnvironmentInfo, IssueContext, RepositoryInfo
 from repo_repro.core.models import ArtifactRef, ExecutionResult, Record, SandboxPolicy
@@ -19,6 +19,13 @@ class SourceFile(Record):
     content: str = Field(max_length=65_536)
 
     @field_validator("path")
+    @classmethod
+    def safe_source_path(cls, value: str) -> str:
+        ArtifactRef.validate_path(value)
+        if not value.endswith((".py", ".go")):
+            raise ValueError("only explicit supported source/test files are accepted")
+        return value
+
     @classmethod
     def safe_python_path(cls, value: str) -> str:
         ArtifactRef.validate_path(value)
@@ -34,9 +41,17 @@ class FailureOracle(Record):
     message_contains: str = Field(min_length=1, max_length=2000)
     issue_quote: str = Field(min_length=1, max_length=4000)
     behavior_contract: str = Field(min_length=1, max_length=4000)
-    node_id: Literal["repo_repro_generated/test_repro.py::test_repro"] = (
-        "repo_repro_generated/test_repro.py::test_repro"
-    )
+    language: Literal["python", "go"] = "python"
+    node_id: str = "repo_repro_generated/test_repro.py::test_repro"
+
+    @model_validator(mode="after")
+    def target_identity(self) -> Self:
+        expected = NODE_ID if self.language == "python" else "TestRepro"
+        if self.node_id != expected:
+            raise ValueError("oracle target does not match its language")
+        if self.language == "go" and self.exception_type != "GoAssertionFailure":
+            raise ValueError("Go requires the return-value assertion oracle")
+        return self
 
 
 class ReproductionInput(Record):
@@ -68,7 +83,7 @@ class TestProposal(Record):
     test_code: str = Field(
         min_length=1,
         max_length=32_768,
-        description="Python code with decoded newlines and exactly one assert.",
+        description="Test source with decoded newlines in the selected framework's safe subset.",
     )
     evidence: tuple[EvidenceQuote, ...] = Field(min_length=1, max_length=20)
 

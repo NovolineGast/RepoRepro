@@ -78,7 +78,9 @@ def assess_execution(
     phases = evidence.phases
     if any(phase.truncated for phase in phases):
         return verdict(ReproductionStatus.INCONCLUSIVE, "failure evidence was truncated")
-    if len(phases) != 3 or {phase.phase for phase in phases} != {"setup", "call", "teardown"}:
+    if len(phases) != len(evidence.required_phases) or {phase.phase for phase in phases} != set(
+        evidence.required_phases
+    ):
         return verdict(ReproductionStatus.INCONCLUSIVE, f"missing or duplicate {name} phases")
     if any(
         phase.target_id != oracle.node_id or phase.expected_failure or phase.outcome == "skipped"

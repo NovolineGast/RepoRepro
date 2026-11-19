@@ -14,6 +14,8 @@ from repo_repro.reproduction.models import FailureOracle, ReproductionInput, Sou
 
 def validate_input(context: ReproductionInput, adapters: AdapterSelection | None = None) -> None:
     selected = adapters or default_selection()
+    if context.oracle.language != selected.language.id:
+        raise InputError("oracle language differs from the selected adapter")
     if context.oracle.issue_quote not in context.issue.body:
         raise InputError("oracle must be anchored in the supplied Issue body")
     if context.issue.repository_url != context.repository.repository_url:

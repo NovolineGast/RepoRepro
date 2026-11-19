@@ -1,12 +1,12 @@
 # Adapter architecture
 
-The development branch routes the existing Python/pytest implementation through explicit adapters. This is an architectural refactor; it does not add a supported language or framework.
+The development branch routes Python/pytest and a restricted Go/standard-library test workflow through explicit adapters. See the [Go guide](go.md) for the supported subset and Capsule v2.
 
 ```bash
 repro adapters
 ```
 
-The built-in registry currently lists `python` and `pytest` only. Unknown identifiers fail rather than importing a module, installing a plugin, or selecting a fallback.
+The built-in registry lists `python` / `pytest` and `go` / `go-test`. Unknown identifiers fail rather than importing a module, installing a plugin, or selecting a fallback.
 
 ## Responsibilities
 
@@ -54,7 +54,7 @@ Existing `PythonAnalyzer`, pytest backend/request names, `reproduction.safety`, 
 
 Capsule v1 remains a Python/pytest codec with its existing schema, paths, command, helper hashes, and fingerprint layout. It binds to compatible local adapters and rejects other pairs. Golden tests retain the pre-refactor helper hashes, and a Capsule captured before the refactor was replayed with matching behavior and environment.
 
-Some compatibility boundaries intentionally remain Python-specific: v1 `SourceFile` / `FailureOracle` / investigation-path schemas, the Capsule v1 layout, and the Docker backend's Python supervisor. A future language needs a versioned data/codec migration, native validation/report collection, approved runtime images, and integration tests. Registering a name alone does not establish language support.
+Source and investigation paths accept supported suffixes, then the selected language validates them. The caller-owned Oracle seals the language and target ID. Capsule v1 remains Python-only; Go uses v2 with explicit command/path/framework binding. The Docker backend still requires a Python supervisor in every runtime image. A future language needs native validation/report collection, a versioned Capsule binding, approved runtime images, and integration tests. Registering a name alone does not establish language support.
 
 ## Testing an implementation
 

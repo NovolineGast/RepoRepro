@@ -21,7 +21,7 @@ from repo_repro.reproduction.cli import echo_record, register
 
 app = typer.Typer(
     name="repro",
-    help="Repo Repro: Python bug reproduction, fix verification, and Capsule replay.",
+    help="Repo Repro: bug reproduction, fix verification, and Capsule replay.",
     no_args_is_help=True,
     add_completion=False,
     rich_markup_mode="rich",
@@ -76,12 +76,13 @@ def analyze(
     cache_dir: Annotated[Path, typer.Option()] = Path(".repo-repro/repositories"),
     ref: Annotated[str | None, typer.Option(help="Explicit Git branch, tag or commit.")] = None,
     output: Annotated[Path | None, typer.Option("--output", "-o")] = None,
+    language: str = "python",
 ) -> None:
-    """Fetch an Issue and statically analyze committed Python repository files."""
+    """Fetch an Issue and statically analyze committed repository files."""
     try:
         parser = IssueParser(GitHubClient(token=os.environ.get("GITHUB_TOKEN")))
         context = parser.parse(url, issue_json=issue_json)
-        analyzer = RepositoryAnalysis()
+        analyzer = RepositoryAnalysis(builtin_registry().resolve(language).language)
         if repository_path is None:
             information = analyzer.clone_and_analyze(
                 context.repository_url,

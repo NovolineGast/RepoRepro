@@ -18,6 +18,11 @@ The Docker backend requires reviewed, locally cached immutable images, Linux amd
 
 The pytest collector shares a process and writable container environment with target code. A malicious target can tamper with or fabricate evidence. Repeated execution detects observed inconsistencies; it does not prove determinism or authenticate a hostile target's behavior. The caller must review the test and its failure oracle.
 
+The unreleased Go adapter has the same reviewed-target assumption. Its native event stream and
+report file are not independently authenticated. It accepts a restricted return-value test shape,
+fixes toolchain/module environment settings and disables network fetching; these checks do not
+make arbitrary Go packages trustworthy. See the [Go scope and runtime requirements](docs/go.md).
+
 ## Capsules and sensitive data
 
 Validation and extraction do not execute files or load images. Replay is a separate explicit operation under a local policy. Hashes provide integrity checks, not publisher authentication. Loading an image also exposes the Docker daemon to archive parsing.
