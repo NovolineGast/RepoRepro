@@ -38,10 +38,16 @@ Reading, validating, and extracting never run bundled code or invoke Docker. `re
 ```bash
 repro capsule schema
 repro capsule inspect .repo-repro/demo/case.zip
+repro capsule inspect .repo-repro/demo/case.zip --summary
 repro capsule unpack .repo-repro/demo/case.zip .repo-repro/capsule-inspection
 repro capsule replay .repo-repro/demo/case.zip .repo-repro/capsule-replay \
   --policy .repo-repro/demo/policy.json
 ```
+
+Use `inspect --summary` for the schema version, mode, language, framework,
+runtime, recorded outcome and pinned commits. Plain `inspect` and `validate`
+print the full validated manifest as JSON. Both inspection formats validate
+the archive before printing any manifest details.
 
 Run the [demo](../examples/README.md) first; extraction and replay destinations must be new. Export takes the recorded result and original artifact store, not the current working tree. `--diagnostic-only` does not capture an image and produces a non-replayable archive.
 
