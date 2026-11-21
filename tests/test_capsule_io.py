@@ -4,10 +4,12 @@ import hashlib
 import io
 import json
 import tarfile
+from errno import ENOSPC
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from repo_repro.capsule.archive import extract_capsule, validate_capsule
@@ -221,6 +223,32 @@ def test_inspect_summary_reports_archive_errors_like_default_json(tmp_path: Path
     assert summary.exit_code == default.exit_code == 3
     assert summary.stdout == ""
     assert summary.stderr == default.stderr
+
+
+@pytest.mark.parametrize(
+    ("command", "options"),
+    [("inspect", ()), ("inspect", ("--summary",)), ("validate", ())],
+)
+def test_capsule_inspection_reports_stdout_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: str, options: tuple[str, ...]
+) -> None:
+    from tests.test_capsule_format import diagnostic_capsule
+
+    archive = tmp_path / "case.zip"
+    diagnostic_capsule(archive)
+    echo = typer.echo
+
+    def fail_stdout(message: str, *, err: bool = False) -> None:
+        if not err:
+            raise OSError(ENOSPC, "No space left on device")
+        echo(message, err=True)
+
+    monkeypatch.setattr(typer, "echo", fail_stdout)
+    result = CliRunner().invoke(app, ["capsule", command, str(archive), *options])
+
+    assert result.exit_code == 3
+    assert result.stdout == ""
+    assert result.stderr == "Invalid capsule input (OSError)\n"
 
 
 def test_replay_comparison_marks_runtime_drift_separately(tmp_path: Path) -> None:

@@ -61,22 +61,40 @@ def export(
         fail(error)
 
 
-def _validated_manifest(capsule: Path) -> CapsuleManifest:
-    try:
-        return validate_capsule(capsule)
-    except (RepoReproError, ValueError, OSError) as error:
-        fail(error)
-
-
 def _console_value(value: str) -> str:
     """Escape non-ASCII and non-printable characters in free-form manifest fields."""
     return value if value.isascii() and value.isprintable() else ascii(value)
 
 
+def _inspect_capsule(capsule: Path, *, summary: bool) -> None:
+    try:
+        manifest = validate_capsule(capsule)
+        if not summary:
+            echo_record(manifest)
+            return
+
+        typer.echo(
+            "\n".join(
+                [
+                    f"Schema version: {manifest.schema_version}",
+                    f"Mode: {manifest.mode}",
+                    f"Language/framework: {manifest.programming_language} / "
+                    f"{manifest.test_framework}",
+                    f"Runtime version: {_console_value(manifest.runtime_version)}",
+                    f"Execution status: {_console_value(manifest.execution_status)}",
+                    f"Original commit: {manifest.original_commit}",
+                    f"Fixed commit: {manifest.fixed_commit or 'unavailable'}",
+                ]
+            )
+        )
+    except (RepoReproError, ValueError, OSError) as error:
+        fail(error)
+
+
 @app.command("validate")
 def validate(capsule: Path) -> None:
     """Validate schema, complete file catalog and hashes; never load images or execute."""
-    echo_record(_validated_manifest(capsule))
+    _inspect_capsule(capsule, summary=False)
 
 
 @app.command("inspect")
@@ -87,23 +105,7 @@ def inspect(
     ] = False,
 ) -> None:
     """Inspect a validated capsule as JSON or a short summary without executing it."""
-    manifest = _validated_manifest(capsule)
-    if not summary:
-        echo_record(manifest)
-        return
-    typer.echo(
-        "\n".join(
-            [
-                f"Schema version: {manifest.schema_version}",
-                f"Mode: {manifest.mode}",
-                f"Language/framework: {manifest.programming_language} / {manifest.test_framework}",
-                f"Runtime version: {_console_value(manifest.runtime_version)}",
-                f"Execution status: {_console_value(manifest.execution_status)}",
-                f"Original commit: {manifest.original_commit}",
-                f"Fixed commit: {manifest.fixed_commit or 'unavailable'}",
-            ]
-        )
-    )
+    _inspect_capsule(capsule, summary=summary)
 
 
 @app.command("unpack")
